@@ -1,0 +1,53 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h4>Registracia</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Meno</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Email</label>
+                        <input type="email" name="email" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Heslo</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                    <hr>
+                    <h6>SSD udaje</h6>
+                    <div class="mb-3">
+                        <label>SSD meno</label>
+                        <input type="text" name="ssd_username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>SSD heslo</label>
+                        <input type="password" name="ssd_password" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Kapacita VB</label>
+                        <select name="battery_capacity" class="form-select">
+                            <option value="3">3 MWh</option>
+                            <option value="6">6 MWh</option>
+                        </select>
+                    </div>
+                    <hr>
+                    <h6>Nastavenia</h6>
+                    <div class="mb-3">
+                        <label>Datum vyuctovania VB</label>
+                        <input type="date" name="billing_date" class="form-control" value="{{ now.replace(month=1, day=1).strftime('%Y-%m-%d') }}" required>
+                        <small class="text-muted">Od tohto datumu sa bude pocitat stav VB</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Registrovat</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

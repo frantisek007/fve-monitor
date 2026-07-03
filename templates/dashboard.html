@@ -1,0 +1,449 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between mb-4">
+            <h2><i class="bi bi-battery-charging"></i> Dashboard</h2>
+            <button class="btn btn-primary" onclick="syncData()" id="syncBtn">
+                <i class="bi bi-arrow-repeat"></i> <span id="syncText">Sync</span>
+                <span id="syncSpinner" style="display:none;">
+                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                </span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5>Stav VB</h5>
+            </div>
+            <div class="card-body text-center">
+                <div style="width:100px;height:180px;background:#eee;border-radius:20px;margin:auto;border:3px solid #333;overflow:hidden;position:relative;">
+                    <div id="batteryFill" style="position:absolute;bottom:0;left:0;right:0;background:green;height:0%;transition:height 1s;"></div>
+                    <div id="batteryLevel" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;font-weight:bold;">0%</div>
+                </div>
+                <div class="mt-2">
+                    <span id="batteryKwh">0</span> / <span id="batteryCapacity">0</span> kWh
+                </div>
+                <small class="text-muted">Posledna aktualizacia: <span id="lastUpdate">--</span></small>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-4">
+                <div class="card bg-success text-white shadow">
+                    <div class="card-body">
+                        <h6>Ulozene vo VB</h6>
+                        <h3 id="totalProduction">0 kWh</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card bg-info text-white shadow">
+                    <div class="card-body">
+                        <h6>Kapacita VB</h6>
+                        <h3 id="batteryCapacityDisplay">0 kWh</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="card bg-danger text-white shadow">
+                    <div class="card-body">
+                        <h6>Nakup zo siete</h6>
+                        <h3 id="gridImport">0 kWh</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="card shadow" id="balanceCard">
+                    <div class="card-body" id="balanceBody">
+                        <h6 id="balanceLabel">Kapacita VB - Ulozene vo VB</h6>
+                        <h3 id="netBalance">0 kWh</h3>
+                        <small id="balanceStatus" class="text-muted">--</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label>Od</label>
+                        <input type="date" id="startDate" class="form-control" value="{{ billing_date.strftime('%Y-%m-%d') if billing_date else '2026-01-01' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label>Do</label>
+                        <input type="date" id="endDate" class="form-control" value="{{ (now - timedelta(days=1)).strftime('%Y-%m-%d') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label>Odberne miesto</label>
+                        <select id="pointSelect" class="form-select" onchange="onParamChange()">
+                            <option value="">Načítavam...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button class="btn btn-success w-100" onclick="syncData()">Nacitat data</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="loadingIndicator" style="display:none;text-align:center;padding:10px;margin-top:10px;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Načítavam...</span>
+    </div>
+    <p class="text-muted">Automatické načítanie dát...</p>
+</div>
+
+<div id="debugInfo" style="margin-top:20px;padding:10px;background:#f8f9fa;border:1px solid #ddd;border-radius:5px;display:none;">
+    <h6>Debug Info</h6>
+    <pre id="debugOutput" style="font-size:12px;margin:0;white-space:pre-wrap;max-height:300px;overflow:auto;"></pre>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Premenné
+let currentStartDate = '';
+let currentEndDate = '';
+let currentPoint = '';
+let isLoading = false;
+let isAutoLoading = false;
+
+function debugLog(message, data) {
+    console.log('🔍', message, data || '');
+    const debugOutput = document.getElementById('debugOutput');
+    const timestamp = new Date().toLocaleTimeString();
+    debugOutput.textContent += timestamp + ' - ' + message + '\n';
+    if (data) {
+        debugOutput.textContent += JSON.stringify(data, null, 2) + '\n';
+    }
+    debugOutput.textContent += '\n';
+    debugOutput.scrollTop = debugOutput.scrollHeight;
+}
+
+function resetAllValues() {
+    document.getElementById('batteryFill').style.height = '0%';
+    document.getElementById('batteryLevel').textContent = '0%';
+    document.getElementById('batteryKwh').textContent = '0';
+    document.getElementById('batteryCapacity').textContent = '0';
+    document.getElementById('batteryCapacityDisplay').textContent = '0 kWh';
+    document.getElementById('totalProduction').textContent = '0 kWh';
+    document.getElementById('gridImport').textContent = '0 kWh';
+    document.getElementById('netBalance').textContent = '0 kWh';
+    document.getElementById('lastUpdate').textContent = '--';
+    
+    const balanceCard = document.getElementById('balanceCard');
+    const balanceBody = document.getElementById('balanceBody');
+    balanceCard.className = 'card shadow';
+    balanceBody.className = 'card-body';
+    document.getElementById('balanceLabel').textContent = 'Kapacita VB - Ulozene vo VB';
+    document.getElementById('balanceStatus').textContent = '--';
+    document.getElementById('balanceStatus').className = 'text-muted';
+}
+
+function updateBalanceCard(netBalance) {
+    const balanceCard = document.getElementById('balanceCard');
+    const balanceBody = document.getElementById('balanceBody');
+    const balanceLabel = document.getElementById('balanceLabel');
+    const balanceStatus = document.getElementById('balanceStatus');
+    
+    if (netBalance > 0) {
+        balanceCard.className = 'card shadow border-success';
+        balanceBody.className = 'card-body bg-success bg-opacity-10';
+        balanceLabel.textContent = '📥 Este sa da ulozit do VB';
+        balanceStatus.textContent = 'Mozes este ulozit ' + netBalance.toFixed(1) + ' kWh do virtualnej batérie';
+        balanceStatus.className = 'text-success fw-bold';
+    } else if (netBalance < 0) {
+        const positiveValue = Math.abs(netBalance);
+        balanceCard.className = 'card shadow border-warning';
+        balanceBody.className = 'card-body bg-warning bg-opacity-10';
+        balanceLabel.textContent = '📤 Poslane zadarmo';
+        balanceStatus.textContent = 'Poslane zadarmo ' + positiveValue.toFixed(1) + ' kWh (prebytok nad kapacitu VB)';
+        balanceStatus.className = 'text-warning fw-bold';
+    } else {
+        balanceCard.className = 'card shadow';
+        balanceBody.className = 'card-body';
+        balanceLabel.textContent = 'Kapacita VB - Ulozene vo VB';
+        balanceStatus.textContent = 'VB je naplnena presne na 100%';
+        balanceStatus.className = 'text-muted';
+    }
+}
+
+function updateDashboard(data) {
+    const batteryCapacityKwh = data.battery_capacity_kwh || 6000;
+    const stored = data.total_production || 0;
+    const gridImport = data.grid_import || 0;
+    const percent = batteryCapacityKwh > 0 ? Math.min(100, Math.max(0, (stored / batteryCapacityKwh) * 100)) : 0;
+    const netBalance = batteryCapacityKwh - stored;
+    
+    document.getElementById('batteryFill').style.height = percent + '%';
+    document.getElementById('batteryLevel').textContent = Math.round(percent) + '%';
+    document.getElementById('batteryKwh').textContent = Math.round(stored);
+    document.getElementById('batteryCapacity').textContent = batteryCapacityKwh;
+    document.getElementById('totalProduction').textContent = stored.toFixed(1) + ' kWh';
+    document.getElementById('batteryCapacityDisplay').textContent = batteryCapacityKwh + ' kWh';
+    document.getElementById('gridImport').textContent = gridImport.toFixed(1) + ' kWh';
+    document.getElementById('netBalance').textContent = netBalance.toFixed(1) + ' kWh';
+    updateBalanceCard(netBalance);
+    document.getElementById('lastUpdate').textContent = data.last_update || new Date().toLocaleDateString('sk-SK');
+}
+
+function loadStatus() {
+    if (isLoading) return;
+    
+    const pointAlias = document.getElementById('pointSelect').value;
+    if (!pointAlias) return;
+    
+    fetch('/api/battery-status?point_alias=' + pointAlias)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) return;
+        updateDashboard(data);
+    })
+    .catch(error => {
+        console.error('Chyba:', error);
+    });
+}
+
+function loadDeliveryPoints() {
+    debugLog('Načítavam odberné miesta...');
+    
+    fetch('/api/delivery-points')
+    .then(response => {
+        debugLog('Odpoveď z /api/delivery-points', response.status);
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        debugLog('Načítané odberné miesta', data);
+        
+        const select = document.getElementById('pointSelect');
+        select.innerHTML = '';
+        
+        if (!data || data.length === 0) {
+            debugLog('Žiadne odberné miesta');
+            const option = document.createElement('option');
+            option.value = 'P1';
+            option.textContent = 'Žiadne odberné miesta';
+            select.appendChild(option);
+            return;
+        }
+        
+        if (data.error) {
+            debugLog('Chyba z API', data.error);
+            const option = document.createElement('option');
+            option.value = 'P1';
+            option.textContent = 'Chyba: ' + data.error;
+            select.appendChild(option);
+            return;
+        }
+        
+        data.forEach((point, index) => {
+            const option = document.createElement('option');
+            const value = point.alias || point.eic || 'P' + (index + 1);
+            option.value = value;
+            
+            let displayText = point.eic || 'Neznáme';
+            if (point.text) {
+                const shortText = point.text.length > 40 ? point.text.substring(0, 40) + '...' : point.text;
+                displayText += ' - ' + shortText;
+            }
+            option.textContent = displayText;
+            option.title = point.text || '';
+            select.appendChild(option);
+        });
+        
+        if (data.length > 0) {
+            const firstValue = data[0].alias || data[0].eic || 'P1';
+            select.value = firstValue;
+            currentPoint = firstValue;
+            debugLog('Nastavená prvá hodnota', firstValue);
+        }
+        
+        debugLog('Odberné miesta načítané, počet: ' + data.length);
+        
+        // Po načítaní odberných miest spustíme auto-load
+        autoLoadData();
+    })
+    .catch(error => {
+        debugLog('Chyba pri načítaní odberných miest', error.message);
+        const select = document.getElementById('pointSelect');
+        select.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = 'P1';
+        option.textContent = 'Chyba načítania';
+        select.appendChild(option);
+    });
+}
+
+function syncData() {
+    if (isLoading) return;
+    isLoading = true;
+    
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const pointAlias = document.getElementById('pointSelect').value;
+    
+    debugLog('Synchronizácia spustená', {startDate, endDate, pointAlias});
+    resetAllValues();
+    
+    document.getElementById('syncSpinner').style.display = 'inline-block';
+    document.getElementById('syncText').textContent = 'Nacitavam...';
+    document.getElementById('syncBtn').disabled = true;
+    
+    currentStartDate = startDate;
+    currentEndDate = endDate;
+    currentPoint = pointAlias;
+    
+    fetch('/api/sync-data', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            start_date: startDate, 
+            end_date: endDate, 
+            point_alias: pointAlias
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        document.getElementById('syncSpinner').style.display = 'none';
+        document.getElementById('syncText').textContent = 'Sync';
+        document.getElementById('syncBtn').disabled = false;
+        isLoading = false;
+        
+        if (data.error) {
+            alert('Chyba: ' + data.error);
+            return;
+        }
+        
+        const batteryCapacityKwh = parseInt(document.getElementById('batteryCapacity').textContent) || 6000;
+        const dashboardData = {
+            battery_capacity_kwh: batteryCapacityKwh,
+            total_production: data.production || 0,
+            grid_import: data.consumption || 0,
+            last_update: new Date().toLocaleDateString('sk-SK')
+        };
+        
+        updateDashboard(dashboardData);
+    })
+    .catch(error => {
+        document.getElementById('syncSpinner').style.display = 'none';
+        document.getElementById('syncText').textContent = 'Sync';
+        document.getElementById('syncBtn').disabled = false;
+        isLoading = false;
+        alert('Chyba: ' + error.message);
+    });
+}
+
+function autoLoadData() {
+    if (isAutoLoading) return;
+    isAutoLoading = true;
+    
+    debugLog('Auto-load spustený...');
+    document.getElementById('loadingIndicator').style.display = 'block';
+    
+    fetch('/api/auto-load')
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+        return response.json();
+    })
+    .then(data => {
+        document.getElementById('loadingIndicator').style.display = 'none';
+        isAutoLoading = false;
+        
+        if (data.success) {
+            debugLog('Auto-load úspešný', data);
+            
+            if (data.billing_date) {
+                document.getElementById('startDate').value = data.billing_date;
+                currentStartDate = data.billing_date;
+            }
+            if (data.end_date) {
+                document.getElementById('endDate').value = data.end_date;
+                currentEndDate = data.end_date;
+            }
+            if (data.point_alias) {
+                document.getElementById('pointSelect').value = data.point_alias;
+                currentPoint = data.point_alias;
+            }
+            
+            loadStatus();
+        } else {
+            debugLog('Auto-load zlyhal', data.error);
+            loadStatus();
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingIndicator').style.display = 'none';
+        isAutoLoading = false;
+        debugLog('Auto-load chyba', error.message);
+        loadStatus();
+    });
+}
+
+function onParamChange() {
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const point = document.getElementById('pointSelect').value;
+    
+    if (startDate !== currentStartDate || endDate !== currentEndDate || point !== currentPoint) {
+        resetAllValues();
+        currentStartDate = startDate;
+        currentEndDate = endDate;
+        currentPoint = point;
+        loadStatus();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    debugLog('DOM načítaný, inicializácia...');
+    
+    currentStartDate = document.getElementById('startDate').value;
+    currentEndDate = document.getElementById('endDate').value;
+    
+    resetAllValues();
+    
+    // Najprv načítame odberné miesta
+    loadDeliveryPoints();
+    
+    document.getElementById('startDate').addEventListener('change', onParamChange);
+    document.getElementById('endDate').addEventListener('change', onParamChange);
+    
+    debugLog('Inicializácia dokončená');
+});
+
+window.syncData = syncData;
+window.loadStatus = loadStatus;
+window.onParamChange = onParamChange;
+window.resetAllValues = resetAllValues;
+</script>
+{% endblock %}
