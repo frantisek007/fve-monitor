@@ -410,22 +410,18 @@ def get_battery_status():
 
 
 
-# Funkcia na inicializáciu databázy (pridaj ju niekde pred spustením)
-def init_db():
-    with app.app_context():
-        print("🔄 Inicializujem databázu...")
-        print(f"📌 Používam DATABASE_URL: {app.config['SQLALCHEMY_DATABASE_URI'][:30]}...") # Zobrazí začiatok URL
-        try:
-            db.create_all()
-            print("✅ Tabuľky boli úspešne vytvorené (alebo už existujú).")
-        except Exception as e:
-            print(f"❌ Chyba pri vytváraní tabuliek: {e}")
+# ... tvoj existujúci kód ...
 
 if __name__ == '__main__':
-    # Zavolaj inicializáciu hneď na začiatku
-    init_db()
-    
-    # Spustenie aplikácie
+    # 1. VYTVORENIE TABULIEK PRIAMO TU
+    print("🔄 Spúšťam INIT databázy...")
+    with app.app_context():
+        print(f"📌 Používam DATABASE_URL: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        db.create_all()
+        print("✅ Tabuľky boli úspešne vytvorené (alebo už existujú).")
+    print("✅ INIT databázy dokončený.")
+
+    # 2. SPUSTENIE SERVERA
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
