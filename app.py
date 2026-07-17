@@ -190,38 +190,30 @@ def create_app() -> Flask:
     def get_crypto() -> CryptoUtils:
         return app.extensions["crypto_utils"]
 
-    def get_ssd_credentials() -> tuple[str | None, str | None]:
-        """
-        Najskôr použije údaje zo session.
-        Ak tam nie sú, bezpečne ich načíta z databázy.
-        """
-        ssd_username = session.get("ssd_username")
-        ssd_password = session.get("ssd_password")
+def get_ssd_credentials() -> tuple[str | None, str | None]:
+    """
+    Načíta zašifrované IMS/SSD prihlasovacie údaje z databázy.
 
-        if ssd_username and ssd_password:
-            return ssd_username, ssd_password
+    Dešifrované hodnoty existujú iba počas aktuálneho volania a nikdy
+    sa neukladajú do Flask session, cookie ani logu.
+    """
+    if not current_user.is_authenticated:
+        return None, None
 
-        if not current_user.is_authenticated:
-            return None, None
+    if not current_user.ssd_username or not current_user.ssd_password:
+        return None, None
 
-        if not current_user.ssd_username or not current_user.ssd_password:
-            return None, None
-
-        try:
-            crypto_utils = get_crypto()
-            ssd_username = crypto_utils.decrypt(current_user.ssd_username)
-            ssd_password = crypto_utils.decrypt(current_user.ssd_password)
-        except Exception:
-            logger.exception(
-                "Nepodarilo sa dešifrovať SSD údaje používateľa %s.",
-                current_user.id,
-            )
-            return None, None
-
-        session["ssd_username"] = ssd_username
-        session["ssd_password"] = ssd_password
-
+    try:
+        crypto_utils = get_crypto()
+        ssd_username = crypto_utils.decrypt(current_user.ssd_username)
+        ssd_password = crypto_utils.decrypt(current_user.ssd_password)
         return ssd_username, ssd_password
+    except Exception:
+        logger.exception(
+            "Nepodarilo sa dešifrovať SSD údaje používateľa %s.",
+            current_user.id,
+        )
+        return None, None
 
     def create_ssd_client() -> SSDIMSClient | None:
         ssd_username, ssd_password = get_ssd_credentials()
