@@ -27,3 +27,6 @@ instance/
 # OS
 .DS_Store
 Thumbs.db
+
+# DOKU
+*.docx
