@@ -409,13 +409,12 @@ def get_battery_status():
         return jsonify({'error': str(e), 'detail': error_detail}), 500
 
 if __name__ == '__main__':
+    # Vytvoríme tabuľky pri štarte (ak neexistujú)
     with app.app_context():
         db.create_all()
+        print("✅ Databázové tabuľky boli vytvorené (alebo už existujú).")
     
-    # Získanie portu z environment premennej (Render) alebo použitie predvoleného
+    # Spustenie aplikácie pre Render (port a host) aj lokálne
     port = int(os.environ.get('PORT', 5000))
-    
-    # Lokálne: debug=True, Render: debug=False
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
