@@ -71,14 +71,19 @@ def register():
         ssd_pass = request.form.get('ssd_password')
         battery_capacity = int(request.form.get('battery_capacity', 3))
         
+        # SPRÁVNE NAČÍTANIE BILLING_DATE S KONTROLOU
         billing_date_str = request.form.get('billing_date')
         if billing_date_str:
             try:
                 billing_date = datetime.strptime(billing_date_str, '%Y-%m-%d').date()
             except ValueError:
-                billing_date = datetime.now().replace(month=1, day=1).date()
+                billing_date = datetime(2026, 1, 1).date()
         else:
-            billing_date = datetime.now().replace(month=1, day=1).date()
+            billing_date = datetime(2026, 1, 1).date()
+        
+        # POISTKA: Ak by náhodou bolo None, nastavíme predvolenú hodnotu
+        if billing_date is None:
+            billing_date = datetime(2026, 1, 1).date()
         
         if User.query.filter_by(username=username).first():
             flash('Meno existuje', 'danger')
@@ -406,4 +411,11 @@ def get_battery_status():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=False, host='127.0.0.1', port=5000)
+    
+    # Získanie portu z environment premennej (Render) alebo použitie predvoleného
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Lokálne: debug=True, Render: debug=False
+    debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
